@@ -63,7 +63,7 @@ In or `justfile`, you may create a recipe like this:
 ```just
 # Neostow: Verbose and overwrite
 neostow:
-  neostow -v -r
+  neostow -v -o
 ```
 
 Then, from any child directory where this `justfile` was placed, you can just run `just neostow`, and it will run the configured recipe.
