@@ -1,10 +1,13 @@
 import std/[symlinks, posix, os, strutils, paths, parseopt, asyncdispatch]
+import neostow/headDir
 
-const MaxConcurrentOps = 10
-var file: string
-var check, verbose, overwrite, delete: bool
-let proj_dir = paths.getCurrentDir()
-var file_fallback = $proj_dir & ".neostow"
+const MaxConcurrentOps: int8 = 10
+
+var
+  gConfigFile: string
+  gCheckCmd, gVerboseFlag, gOverwriteFlag, gDeleteFlag: bool
+  gProjectDir: Path
+  gConfigFileFallback: string
 
 proc writeVersion() =
   echo "v1.0.0"
@@ -25,40 +28,40 @@ proc writeHelp() =
     check                Check for inconsistencies in config file
   """
 
-proc genSymlink(src: string, dest: string): Future[void] {.async.} =
-  var src_path = proj_dir / Path(src)
-  let src_file = extractFilename(src_path)
-
-  var destSep: string = dest
-  if not destSep.endsWith(DirSep):
-    destSep.add(DirSep)
-
-  destSep = destSep.replace("$HOME", getEnv("HOME"))
-
-  destSep = expandTilde(destSep)
-
-  var dest_path = Path(destSep.absolutePath)
-
-  if delete:
-    if symlinkExists(dest_path / src_file):
-      removeFile($dest_path & $src_file)
-      if verbose:
-        echo "Deleted symlink: ", $dest_path & $src_file
-    if not overwrite:
+proc genSymlink(src, dest: Path, src_file: Path): Future[void] {.async.} =
+  if gDeleteFlag:
+    if symlinkExists(dest / src_file):
+      removeFile($dest & $src_file)
+      if gVerboseFlag:
+        echo "Deleted symlink: ", $dest & $src_file
+    if not gOverwriteFlag:
       return
-  if symlinkExists(dest_path):
-    if verbose:
-      echo "Symlink already exists at ", dest_path
+  if symlinkExists(dest):
+    if gVerboseFlag:
+      echo "Symlink already exists at ", dest
   else:
-    if dirExists($src_path) or fileExists($src_path):
+    if dirExists($src) or fileExists($src):
       try:
-        createSymlink(src_path, dest_path / src_file)
-        if verbose:
-          echo "Created symlink: ", dest_path / src_file
+        createSymlink(src, dest / src_file)
+        if gVerboseFlag:
+          echo "Created symlink: ", dest / src_file
       except OSError as e:
         echo "Failed to create symlink: ", e.msg
     else:
-      echo "Source directory does not exist: ", src_path
+      echo "Source directory does not exist: ", src
+
+proc stabilizeDestination(dest: string): Path =
+  var destination: string = dest
+  if not destination.endsWith(DirSep):
+    destination.add(DirSep)
+
+  var dest_env = headDir(dest)
+  if existsEnv(dest_env):
+    destination = destination.replace(getEnv(dest_env), getEnv("HOME"))
+
+  destination = expandTilde(destination)
+
+  Path(destination.absolutePath)
 
 proc readConfig(file: string): Future[void] {.async.} =
   var futures: seq[Future[void]] = @[]
@@ -67,17 +70,26 @@ proc readConfig(file: string): Future[void] {.async.} =
       continue
     let parts = line.split('=')
     if parts.len == 2:
-      if check:
+      if gCheckCmd:
         continue
-      let key = parts[0].strip
-      let value = parts[1].strip
-      futures.add genSymlink(key, value)
+      var src_file: string
+      let
+        src = parts[0].strip
+        tmp_dest = parts[1].strip
+        dest = stabilizeDestination(tmp_dest)
+        src_isdir = dirExists(src)
+      if src_isdir:
+        src_file = tailDir(src)
+      else:
+        src_file = extractFilename(src)
+      var src_path = gProjectDir / Path(src)
+      futures.add genSymlink(src_path, dest, Path(src_file))
       if futures.len >= MaxConcurrentOps:
         await futures[0]
         futures.delete(0)
     else:
-      if verbose:
-        if check:
+      if gVerboseFlag:
+        if gCheckCmd:
           echo "Found malformed element at line: ", line.len
         else:
           echo "Skipping malformed element: line ", line.len
@@ -94,9 +106,13 @@ proc main() =
     of cmdArgument:
       case p.key
       of "check":
-        check = true
-        verbose = true
-      file = p.key
+        gCheckCmd = true
+        gVerboseFlag = true
+      gConfigFile = p.key
+      if fileExists(gConfigFile):
+        gProjectDir = tailDir(Path(gConfigFile))
+      else:
+        gProjectDir = paths.getCurrentDir()
     of cmdLongOption, cmdShortOption:
       case p.key
       of "help", "h":
@@ -110,32 +126,33 @@ proc main() =
         if p.kind != cmdArgument:
           stderr.writeLine("Error: -f requires an argument")
           quit(1)
-        file = p.key
+        gConfigFile = p.key
       of "delete", "d":
-        delete = true
+        gDeleteFlag = true
       of "overwrite", "o":
-        delete = true
-        overwrite = true
+        gDeleteFlag = true
+        gOverwriteFlag = true
       of "verbose":
-        verbose = true
+        gVerboseFlag = true
       else:
         stderr.writeLine("Unknown option: ", p.key)
         quit(1)
 
-  if not fileExists(file):
-    if not fileExists(file_fallback):
-      stderr.writeLine("Config file not found: " & file)
+  if not fileExists(gConfigFile):
+    gConfigFileFallback = $gProjectDir & ".neostow"
+    if not fileExists(gConfigFileFallback):
+      stderr.writeLine("Config file not found: " & gConfigFile)
       quit(1)
-    file = file_fallback
+    gConfigFile = gConfigFileFallback
 
-  if file.len == 0 or not fileExists(file):
+  if gConfigFile.len == 0 or not fileExists(gConfigFile):
     stderr.writeLine("No valid config file to load")
     quit(1)
 
   try:
-    waitFor readConfig(file)
+    waitFor readConfig(gConfigFile)
   except IOError:
-    stderr.writeLine("Error opening file: " & file)
+    stderr.writeLine("Error opening file: " & gConfigFile)
     quit(1)
 
 when isMainModule:
