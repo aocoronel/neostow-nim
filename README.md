@@ -16,9 +16,7 @@ This repository contains a rewritten version of the original [neostow](https://g
 ## Installation
 
 ```bash
-git clone https://github.com/anstrinn/neostow.git
-chmod +x neostow/src/neostow
-sudo cp neostow/src/neostow /usr/local/bin/
+nimble install https://github.com/aocoronel/neostow-nim
 ```
 
 ## Usage
