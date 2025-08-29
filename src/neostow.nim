@@ -33,7 +33,8 @@ proc genSymlink(src, dest: Path, src_file: Path): Future[void] {.async.} =
     if symlinkExists(dest / src_file):
       removeFile($dest & $src_file)
       if gVerboseFlag:
-        echo "Deleted symlink: ", $dest & $src_file
+        if not gOverwriteFlag:
+          echo "Deleted symlink: ", $dest & $src_file
     if not gOverwriteFlag:
       return
   if symlinkExists(dest):
@@ -72,16 +73,12 @@ proc readConfig(file: string): Future[void] {.async.} =
     if parts.len == 2:
       if gCheckCmd:
         continue
-      var src_file: string
       let
-        src = parts[0].strip
         tmp_dest = parts[1].strip
         dest = stabilizeDestination(tmp_dest)
-        src_isdir = dirExists(src)
-      if src_isdir:
-        src_file = parentDir(src)
-      else:
-        src_file = extractFilename(src)
+      var
+        src = parts[0].strip
+        src_file = basename(src)
       var src_path = absolutePath(gProjectDir) / Path(src)
       futures.add genSymlink(src_path, dest, Path(src_file))
       if futures.len >= MaxConcurrentOps:
