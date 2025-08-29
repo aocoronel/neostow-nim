@@ -1,5 +1,5 @@
 import std/[symlinks, posix, os, strutils, paths, parseopt, asyncdispatch, envvars]
-import neostow/paths
+import neostow/bpaths
 
 const MaxConcurrentOps: int8 = 10
 
