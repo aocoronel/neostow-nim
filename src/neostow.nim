@@ -1,5 +1,5 @@
-import std/[symlinks, posix, os, strutils, paths, parseopt, asyncdispatch]
-import neostow/headDir
+import std/[symlinks, posix, os, strutils, paths, parseopt, asyncdispatch, envvars]
+import neostow/paths
 
 const MaxConcurrentOps: int8 = 10
 
@@ -51,17 +51,17 @@ proc genSymlink(src, dest: Path, src_file: Path): Future[void] {.async.} =
       echo "Source directory does not exist: ", src
 
 proc stabilizeDestination(dest: string): Path =
-  var destination: string = dest
+  var destination = getchar(dest, '$')
+
+  var dest_env = headDir(destination)
   if not destination.endsWith(DirSep):
     destination.add(DirSep)
-
-  var dest_env = headDir(dest)
-  if existsEnv(dest_env):
-    destination = destination.replace(getEnv(dest_env), getEnv("HOME"))
+  if envvars.existsEnv(dest_env):
+    destination = destination.replace(dest_env, getEnv(dest_env))
 
   destination = expandTilde(destination)
 
-  Path(destination.absolutePath)
+  Path(destination)
 
 proc readConfig(file: string): Future[void] {.async.} =
   var futures: seq[Future[void]] = @[]
@@ -79,10 +79,10 @@ proc readConfig(file: string): Future[void] {.async.} =
         dest = stabilizeDestination(tmp_dest)
         src_isdir = dirExists(src)
       if src_isdir:
-        src_file = tailDir(src)
+        src_file = parentDir(src)
       else:
         src_file = extractFilename(src)
-      var src_path = gProjectDir / Path(src)
+      var src_path = absolutePath(gProjectDir) / Path(src)
       futures.add genSymlink(src_path, dest, Path(src_file))
       if futures.len >= MaxConcurrentOps:
         await futures[0]
@@ -110,7 +110,7 @@ proc main() =
         gVerboseFlag = true
       gConfigFile = p.key
       if fileExists(gConfigFile):
-        gProjectDir = tailDir(Path(gConfigFile))
+        gProjectDir = parentDir(Path(gConfigFile))
       else:
         gProjectDir = paths.getCurrentDir()
     of cmdLongOption, cmdShortOption:
