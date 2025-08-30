@@ -38,5 +38,3 @@ proc basename*(path: string): string =
     if path[i] == '/':
       return path[i + 1 .. ^skipSep]
   return path[0 .. ^skipSep]
-
-echo headDir("/home/anstrinn/stow/secrets")
