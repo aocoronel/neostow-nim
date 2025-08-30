@@ -72,6 +72,12 @@ proc readConfig(file: string): Future[void] {.async.} =
     let parts = line.split('=')
     if parts.len == 2:
       if gCheckCmd:
+        let
+          src = parts[0].strip
+          src_file = basename(src)
+        let src_path = absolutePath(gProjectDir) / Path(src)
+        if not dirExists($src_path) or not fileExists($src_path):
+          echo "Warning: Source ", $src_path, " does not exist"
         continue
       let
         tmp_dest = parts[1].strip
