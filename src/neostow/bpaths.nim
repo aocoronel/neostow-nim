@@ -22,10 +22,13 @@ proc getchar*(s: string, c: char): string =
 
   It serves to consume the `$` symbol from environment variables.
   ]##
-  for i in 0 ..< s.len:
-    if s[i] == c:
-      return s[0 ..< i] & s[i + 1 ..^ 1]
-  return s
+  result = newStringOfCap(s.len)
+  var skipped = false
+  for ch in s:
+    if not skipped and ch == c:
+      skipped = true
+      continue
+    result.add(ch)
 
 proc basename*(path: string): string =
   ##[
